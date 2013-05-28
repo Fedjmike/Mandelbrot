@@ -7,10 +7,9 @@ int main (int argc, char** argv) {
     (void) argc, (void) argv;
 
     int res = 512;
-    int samplerate = 1;
 
-    Viewer<double> viewer(make_shared<Engine<double>>(37, 100, 4),
-                          res, res, samplerate, samplerate,
+    Viewer<double> viewer(make_shared<Engine<double>>(8, 100, 4),
+                          res, res, 2,
                           {-2.0, -1.5}, {1.0, 1.5});
 
     {

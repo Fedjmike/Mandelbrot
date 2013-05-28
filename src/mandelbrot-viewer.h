@@ -16,8 +16,7 @@ namespace mandelbrot {
         private:
             std::shared_ptr<Engine<T>> engine;
 
-            int width, height;
-            int xsamp, ysamp;
+            int width, height, samplerate;
 
             std::complex<T> topleft, bottomright;
 
@@ -28,19 +27,18 @@ namespace mandelbrot {
 
         public:
             Viewer (std::shared_ptr<Engine<T>> nengine,
-                    int nwidth, int nheight,
-                    int nxsamp, int nysamp,
+                    int nwidth, int nheight, int nsamplerate,
                     std::complex<T> ntopleft,
                     std::complex<T> nbottomright):
                 engine(nengine),
-                width(nwidth), height(nheight),
-                xsamp(nxsamp), ysamp(nysamp),
+                width(nwidth), height(nheight), samplerate(nsamplerate),
                 topleft(ntopleft), bottomright(nbottomright),
-                thread(), queue() {
+                thread() {
                 if (Video::Init(width, height) != 0)
                     exit(1);
 
                 engine->acceptViewer(this);
+                engine->samplerate(width*samplerate);
                 engine->move(topleft, bottomright);
                 engine->start();
                 start();
@@ -53,7 +51,7 @@ namespace mandelbrot {
 
             void start () {
                 pthread_create(&thread, NULL,
-                               (void* (*)(void*)) threadMain, this);
+                               (void* (*)(void*)) threadMainDelegate, this);
             }
 
             void join () {
@@ -62,15 +60,29 @@ namespace mandelbrot {
                 puts("Viewer thread joined");
             }
 
-            void receive (int phase, int period, Map<T> map) {
+            void receive (Map<T> map) {
                 pthread_mutex_lock(&drawLock);
                 puts("Viewer receiving");
 
                 for (auto chunk: map.getChunks()) {
-                    for (int index = phase; index < chunk.getSize(); index += period) {
-                        int y = index % chunk.getPitch(), x = index / chunk.getPitch();
-                        Video::Plot(x, y, colourIterSmooth(chunk.getIters(index), chunk.getItermax(),
-                                                           chunk.getLength(index), chunk.getEscapeRadius()) << 16);
+                    for (int x = 0; x < width; x++) {
+                        for (int y = 0; y < height; y++) {
+                            int value = 0;
+
+                            for (int i = 0; i < samplerate; i++) {
+                                for (int j = 0; j < samplerate; j++) {
+                                    int index = (samplerate*x + i) + (samplerate*y + j)*chunk.getPitch();
+                                    value +=   chunk.getIters(index) != 0
+                                             ? colourIterSmooth(chunk.getIters(index), chunk.getItermax(),
+                                                                chunk.getLength(index), chunk.getEscapeRadius())
+                                             : 0;
+                                }
+                            }
+
+                            value /= samplerate*samplerate;
+
+                            Video::Plot(x, y, value << 16);
+                        }
                     }
                 }
 
@@ -88,10 +100,13 @@ namespace mandelbrot {
                 return sqrt((T) iters - log2(log2(length)/log2(escapeRadius))) * 255 / sqrt(itermax);
             }
 
-            static void threadMain (Viewer* me) {
-                (void) me;
+            static void threadMainDelegate (Viewer* viewer) {
+                viewer->threadMain();
+            }
 
+            void threadMain () {
                 puts("Viewer thread");
+                engine->join();
             }
     };
 }

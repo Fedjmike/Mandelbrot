@@ -28,7 +28,7 @@ namespace mandelbrot {
             std::vector<std::complex<T>> c;
             std::vector<std::complex<T>> z;
             std::vector<int> iters;
-            int pitch = 256;
+            int pitch = 1;
             T step = 0;
 
         public:
@@ -50,7 +50,7 @@ namespace mandelbrot {
                 for (int i = 0; i < threadno; i++) {
                     pthread_t t;
                     pthread_create(&t, NULL,
-                                   (void* (*)(void*)) threadMainDelegator, new threadArgs({this, i}));
+                                   (void* (*)(void*)) threadMainDelegate, new threadArgs({this, i}));
                     threads.push_back(t);
                 }
             }
@@ -62,9 +62,17 @@ namespace mandelbrot {
                     pthread_join(thread, NULL);
 
                 puts("Engine threads joined");
+
+                viewer->receive(Map<T>({
+                    Chunk<T>(topleft, step, pitch, itermax, escapeRadius, z, iters)
+                }));
             }
 
             //
+
+            void samplerate (int n) {
+                pitch = n;
+            }
 
             void move (std::complex<T> ntopleft, std::complex<T> nbottomright) {
                 topleft = ntopleft;
@@ -97,8 +105,8 @@ namespace mandelbrot {
                 step = (bottomright-topleft).real()/pitch;
                 int height = (bottomright-topleft).imag()/step;
 
-                for (int i = 0; i < pitch; i++) {
-                    for (int j = 0; j < height; j++) {
+                for (int j = 0; j < pitch; j++) {
+                    for (int i = 0; i < height; i++) {
                         c.push_back(topleft + std::complex<T>(i, j)*step);
                         //std::cout << i << ", " << j << ": " << c.back() << "\n";
                         z.push_back(0);
@@ -107,13 +115,13 @@ namespace mandelbrot {
                 }
             }
 
-            static void threadMainDelegator (threadArgs* args) {
+            static void threadMainDelegate (threadArgs* args) {
                 args->engine->threadMain(args);
                 delete args;
             }
 
             void threadMain (threadArgs* args) {
-                puts("Engine thread");
+                printf("+ Engine worker #%d\n", args->id);
 
                 for (int i = args->id; i < (int) z.size(); i += threadno) {
                     for (int iterno = 1; iterno <= itermax; iterno++) {
@@ -126,9 +134,7 @@ namespace mandelbrot {
                     }
                 }
 
-                viewer->receive(args->id, threadno, Map<T>({
-                    Chunk<T>(topleft, step, pitch, itermax, escapeRadius, z, iters)
-                }));
+                printf("  - Engine worker #%d\n", args->id);
             }
     };
 }
